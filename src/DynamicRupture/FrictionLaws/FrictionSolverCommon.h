@@ -19,6 +19,7 @@ struct Common {
   /**
    * Calculate traction and normal stress at the interface of a face.
    * Using equations (A2) from Pelties et al. 2014
+   * This is equation (4.53) of Carsten Uphoff's thesis, this function returns the Theta_i from eq (4.53)
    * Definiton of eta and impedance Z are found in dissertation of Carsten Uphoff
    *
    * @param[out] faultStresses contains normalStress, traction1, traction2
@@ -141,6 +142,7 @@ struct Common {
         imposedStateM[0][i] += weight * normalStress;
         imposedStateM[3][i] += weight * traction1;
         imposedStateM[5][i] += weight * traction2;
+        // This is eq (4.60) from Carsten's thesis
         imposedStateM[6][i] +=
             weight * (qIMinus[o][6][i] - invZpNeig * (normalStress - qIMinus[o][0][i]));
         imposedStateM[7][i] +=
@@ -151,6 +153,7 @@ struct Common {
         imposedStateP[0][i] += weight * normalStress;
         imposedStateP[3][i] += weight * traction1;
         imposedStateP[5][i] += weight * traction2;
+        // This is eq (4.60) from Carsten's thesis
         imposedStateP[6][i] +=
             weight * (qIPlus[o][6][i] + invZp * (normalStress - qIPlus[o][0][i]));
         imposedStateP[7][i] += weight * (qIPlus[o][7][i] + invZs * (traction1 - qIPlus[o][3][i]));
