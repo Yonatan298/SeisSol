@@ -45,6 +45,11 @@
 #include <generated_code/tensor.h>
 #include <generated_code/kernel.h>
 #include <Kernels/Time.h>
+#ifdef USE_STP
+#include <array>
+#include <memory>
+#include <Numerical_aux/BasisFunction.h>
+#endif
 
 namespace seissol {
   namespace kernels {
@@ -65,6 +70,9 @@ class seissol::kernels::DynamicRupture {
     double timePoints[CONVERGENCE_ORDER];
     double timeSteps[CONVERGENCE_ORDER];
     double timeWeights[CONVERGENCE_ORDER];
+#ifdef USE_STP
+  std::array<std::shared_ptr<basisFunction::SampledTimeBasisFunctions<real>>, CONVERGENCE_ORDER> timeBasisFunctions;
+#endif
 
 
   DynamicRupture() {}

@@ -41,6 +41,7 @@ struct FaultStresses {
   real normalStress[CONVERGENCE_ORDER][misc::numPaddedPoints] = {{}};
   real traction1[CONVERGENCE_ORDER][misc::numPaddedPoints] = {{}};
   real traction2[CONVERGENCE_ORDER][misc::numPaddedPoints] = {{}};
+  real fluidPressure[CONVERGENCE_ORDER][misc::numPaddedPoints] = {{}};
 };
 
 /**
