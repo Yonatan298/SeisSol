@@ -27,6 +27,7 @@ Characteristics of the SeisSol simulation software are:
   compilation
   a-first-example
   acknowledge
+  reproducible-research
   related-publications
 
 .. toctree::
@@ -45,6 +46,7 @@ Characteristics of the SeisSol simulation software are:
   configuration
   parameter-file
   initial-condition
+  left-lateral-right-lateral-normal-reverse.rst
   easi
   fault-tagging
   environment-variables
@@ -77,6 +79,7 @@ Characteristics of the SeisSol simulation software are:
   postprocessing-and-visualization
   wave-field-output
   checkpointing
+  energy-output
  
 .. toctree::
   :maxdepth: 2
@@ -121,11 +124,3 @@ Characteristics of the SeisSol simulation software are:
   pointsource
   kinematic
   copyrights
-
-.. toctree::
-  :maxdepth: 2
-  :caption: Unsorted
-
-  building-seissol-on-stampede-knl-test-system
-  left-lateral-right-lateral-normal-reverse
-  optimization-for-non-intel-architectures
