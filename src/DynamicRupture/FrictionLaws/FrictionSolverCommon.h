@@ -19,7 +19,8 @@ struct Common {
   /**
    * Calculate traction and normal stress at the interface of a face.
    * Using equations (A2) from Pelties et al. 2014
-   * This is equation (4.53) of Carsten Uphoff's thesis, this function returns the Theta_i from eq (4.53)
+   * This is equation (4.53) of Carsten Uphoff's thesis, 
+   * this function returns the Theta_i from eq (4.53).
    * Definiton of eta and impedance Z are found in dissertation of Carsten Uphoff
    *
    * @param[out] faultStresses contains normalStress, traction1, traction2
