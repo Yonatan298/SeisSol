@@ -61,6 +61,7 @@ struct Common {
 #pragma omp loop bind(parallel)
 #endif // ACL_DEVICE_OFFLOAD
       for (unsigned i = 0; i < misc::numPaddedPoints; ++i) {
+        // This is eq (4.53) from Carsten's thesis
         faultStresses.normalStress[o][i] =
             etaP * (qIMinus[o][6][i] - qIPlus[o][6][i] + qIPlus[o][0][i] * invZp +
                     qIMinus[o][0][i] * invZpNeig);
