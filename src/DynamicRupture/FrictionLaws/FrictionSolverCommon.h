@@ -7,20 +7,6 @@
 #include "Kernels/DynamicRupture.h"
 
 namespace seissol::dr::friction_law {
-template <typename T, int dim1, int dim2>
-void copyEigenToYateto(Eigen::Matrix<T, dim1, dim2> const& matrix,
-                       yateto::DenseTensorView<2, T>& tensorView) {
-  assert(tensorView.shape(0) == dim1);
-  assert(tensorView.shape(1) == dim2);
-
-  tensorView.setZero();
-  for (size_t row = 0; row < dim1; ++row) {
-    for (size_t col = 0; col < dim2; ++col) {
-      tensorView(row, col) = matrix(row, col);
-    }
-  }
-}
-
 struct Common {
   /**
    * Contains common functions required both for CPU and GPU impl.
@@ -40,13 +26,12 @@ struct Common {
    * @param[out] faultStresses contains normalStress, traction1, traction2
    *             at the 2d face quadrature nodes evaluated at the time
    *             quadrature points
-   * @param[in] impAndEta contains eta and impedance values
+   * @param[in] impedanceMatrices contains eta and impedance values
    * @param[in] qInterpolatedPlus a plus side dofs interpolated at time sub-intervals
    * @param[in] qInterpolatedMinus a minus side dofs interpolated at time sub-intervals
    */
   static void precomputeStressFromQInterpolated(
       FaultStresses& faultStresses,
-      const ImpedancesAndEta& impAndEta,
       const ImpedanceMatrices& impedanceMatrices,
       real qInterpolatedPlus[CONVERGENCE_ORDER][tensor::QInterpolated::size()],
       real qInterpolatedMinus[CONVERGENCE_ORDER][tensor::QInterpolated::size()]) {
@@ -54,54 +39,20 @@ struct Common {
     static_assert(tensor::QInterpolated::Shape[0] == tensor::resample::Shape[0],
                   "Different number of quadrature points?");
 
-    // this initialization of the kernel could be moved to the initializer,
-    // since all inputs outside the j-loop are time independent
-    // set inputParam could be extendent for this
-    // the kernel then could be a class attribute (but be careful of race conditions since this is
-    // computed in parallel!!)
-
-    auto etaP = impAndEta.etaP;
-    auto etaS = impAndEta.etaS;
-    auto invZp = impAndEta.invZp;
-    auto invZs = impAndEta.invZs;
-    auto invZpNeig = impAndEta.invZpNeig;
-    auto invZsNeig = impAndEta.invZsNeig;
-
-    using QInterpolatedShapeT = real(*)[misc::numQuantities][misc::numPaddedPoints];
-    auto* qIPlus = (reinterpret_cast<QInterpolatedShapeT>(qInterpolatedPlus));
-    auto* qIMinus = (reinterpret_cast<QInterpolatedShapeT>(qInterpolatedMinus));
-
-    #pragma omp critical
-    {
-      std::cout << "#######################" << std::endl;
-      std::cout << impedanceMatrices.impedance << std::endl;
-      std::cout << impAndEta.invZp << ", " << impAndEta.invZs << std::endl;
-      std::cout << impedanceMatrices.impedanceNeig << std::endl;
-      std::cout << impAndEta.invZpNeig << ", " << impAndEta.invZsNeig << std::endl;
-      std::cout << impedanceMatrices.eta << std::endl;
-      std::cout << impAndEta.etaP << ", " << impAndEta.etaS << std::endl;
-    }
-
     seissol::dynamicRupture::kernel::computeTheta krnl;
-    krnl.selectVelocities = init::selectVelocities::Values;
-    krnl.selectTractions = init::selectTractions::Values;
+    krnl.extractVelocities = init::extractVelocities::Values;
+    krnl.extractTractions = init::extractTractions::Values;
 
-    real zPlus[tensor::Zplus::size()] = {};
-    auto zPlusView = init::theta::view::create(zPlus);
-    copyEigenToYateto(impedanceMatrices.impedanceNeig, zPlusView);
-    real zMinus[tensor::Zminus::size()] = {};
-    auto zMinusView = init::theta::view::create(zMinus);
-    copyEigenToYateto<real, 3, 3>(impedanceMatrices.impedance, zMinusView);
-    real eta[tensor::Zminus::size()] = {};
-    auto etaView = init::theta::view::create(eta);
-    copyEigenToYateto<real, 3, 3>(impedanceMatrices.eta, etaView);
-    krnl.Zplus = zPlus;
-    krnl.Zminus = zMinus;
-    krnl.eta = eta;
+    // Compute Theta from eq (4.53) in Carsten's thesis
+    krnl.Zplus = impedanceMatrices.impedanceNeig.data();
+    krnl.Zminus = impedanceMatrices.impedance.data();
+    krnl.eta = impedanceMatrices.eta.data();
 
     real thetaBuffer[tensor::theta::size()] = {};
     krnl.theta = thetaBuffer;
     auto thetaView = init::theta::view::create(thetaBuffer);
+
+    // TODO: Integrate loop over o into the kernel
     for (unsigned o = 0; o < CONVERGENCE_ORDER; ++o) {
       krnl.Qplus = qInterpolatedPlus[o];
       krnl.Qminus = qInterpolatedMinus[o];
@@ -111,27 +62,12 @@ struct Common {
 #pragma omp loop bind(parallel)
 #endif // ACL_DEVICE_OFFLOAD
       for (unsigned i = 0; i < misc::numPaddedPoints; ++i) {
-        // This is eq (4.53) from Carsten's thesis
-        faultStresses.normalStress[o][i] =
-            etaP * (qIMinus[o][6][i] - qIPlus[o][6][i] + qIPlus[o][0][i] * invZp +
-                    qIMinus[o][0][i] * invZpNeig);
-
-        faultStresses.traction1[o][i] =
-            etaS * (qIMinus[o][7][i] - qIPlus[o][7][i] + qIPlus[o][3][i] * invZs +
-                    qIMinus[o][3][i] * invZsNeig);
-
-        faultStresses.traction2[o][i] =
-            etaS * (qIMinus[o][8][i] - qIPlus[o][8][i] + qIPlus[o][5][i] * invZs +
-                    qIMinus[o][5][i] * invZsNeig);
-
-        #pragma omp critical
-        {
-          std::cout << "---------------------------" << std::endl;
-          std::cout << faultStresses.normalStress[o][i] << ", " << faultStresses.traction1[o][i]
-                    << ", " << faultStresses.traction2[o][i] << std::endl;
-          std::cout << thetaView(0, i) << ", " << thetaView(1, i) << ", " << thetaView(2, i)
-                    << std::endl;
-        }
+        faultStresses.normalStress[o][i] = thetaView(0, i);
+        faultStresses.traction1[o][i] = thetaView(1, i);
+        faultStresses.traction2[o][i] = thetaView(2, i);
+#ifdef USE_POROELASTIC
+        faultStresses.fluidPressure[o][i] = thetaView(3, i);
+#endif
       }
     }
   }

@@ -42,7 +42,6 @@ class GpuFrictionSolver : public GpuBaseFrictionLaw {
       device(deviceId) nowait
       for (unsigned ltsFace = 0; ltsFace < layerSize; ++ltsFace) {
         Common::precomputeStressFromQInterpolated(faultStresses[ltsFace],
-                                                  impAndEta[ltsFace],
                                                   impedanceMatrices[ltsFace],
                                                   qInterpolatedPlus[ltsFace],
                                                   qInterpolatedMinus[ltsFace]);

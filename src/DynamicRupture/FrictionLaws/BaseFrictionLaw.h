@@ -35,7 +35,6 @@ class BaseFrictionLaw : public FrictionSolver {
     for (unsigned ltsFace = 0; ltsFace < layerData.getNumberOfCells(); ++ltsFace) {
       alignas(ALIGNMENT) FaultStresses faultStresses{};
       Common::precomputeStressFromQInterpolated(faultStresses,
-                                                impAndEta[ltsFace],
                                                 impedanceMatrices[ltsFace],
                                                 qInterpolatedPlus[ltsFace],
                                                 qInterpolatedMinus[ltsFace]);
