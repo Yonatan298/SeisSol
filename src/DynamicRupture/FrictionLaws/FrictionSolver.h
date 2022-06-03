@@ -51,6 +51,7 @@ class FrictionSolver {
 
   dr::DRParameters& drParameters;
   ImpedancesAndEta* impAndEta;
+  ImpedanceMatrices* impedanceMatrices;
   real mFullUpdateTime;
   // CS = coordinate system
   real (*initialStressInFaultCS)[misc::numPaddedPoints][6];

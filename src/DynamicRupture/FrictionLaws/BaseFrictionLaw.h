@@ -36,6 +36,7 @@ class BaseFrictionLaw : public FrictionSolver {
       alignas(ALIGNMENT) FaultStresses faultStresses{};
       Common::precomputeStressFromQInterpolated(faultStresses,
                                                 impAndEta[ltsFace],
+                                                impedanceMatrices[ltsFace],
                                                 qInterpolatedPlus[ltsFace],
                                                 qInterpolatedMinus[ltsFace]);
 

@@ -7,6 +7,20 @@
 #include "Kernels/DynamicRupture.h"
 
 namespace seissol::dr::friction_law {
+template <typename T, int dim1, int dim2>
+void copyEigenToYateto(Eigen::Matrix<T, dim1, dim2> const& matrix,
+                       yateto::DenseTensorView<2, T>& tensorView) {
+  assert(tensorView.shape(0) == dim1);
+  assert(tensorView.shape(1) == dim2);
+
+  tensorView.setZero();
+  for (size_t row = 0; row < dim1; ++row) {
+    for (size_t col = 0; col < dim2; ++col) {
+      tensorView(row, col) = matrix(row, col);
+    }
+  }
+}
+
 struct Common {
   /**
    * Contains common functions required both for CPU and GPU impl.
@@ -19,7 +33,7 @@ struct Common {
   /**
    * Calculate traction and normal stress at the interface of a face.
    * Using equations (A2) from Pelties et al. 2014
-   * This is equation (4.53) of Carsten Uphoff's thesis, 
+   * This is equation (4.53) of Carsten Uphoff's thesis,
    * this function returns the Theta_i from eq (4.53).
    * Definiton of eta and impedance Z are found in dissertation of Carsten Uphoff
    *
@@ -33,6 +47,7 @@ struct Common {
   static void precomputeStressFromQInterpolated(
       FaultStresses& faultStresses,
       const ImpedancesAndEta& impAndEta,
+      const ImpedanceMatrices& impedanceMatrices,
       real qInterpolatedPlus[CONVERGENCE_ORDER][tensor::QInterpolated::size()],
       real qInterpolatedMinus[CONVERGENCE_ORDER][tensor::QInterpolated::size()]) {
 
@@ -56,7 +71,41 @@ struct Common {
     auto* qIPlus = (reinterpret_cast<QInterpolatedShapeT>(qInterpolatedPlus));
     auto* qIMinus = (reinterpret_cast<QInterpolatedShapeT>(qInterpolatedMinus));
 
+    #pragma omp critical
+    {
+      std::cout << "#######################" << std::endl;
+      std::cout << impedanceMatrices.impedance << std::endl;
+      std::cout << impAndEta.invZp << ", " << impAndEta.invZs << std::endl;
+      std::cout << impedanceMatrices.impedanceNeig << std::endl;
+      std::cout << impAndEta.invZpNeig << ", " << impAndEta.invZsNeig << std::endl;
+      std::cout << impedanceMatrices.eta << std::endl;
+      std::cout << impAndEta.etaP << ", " << impAndEta.etaS << std::endl;
+    }
+
+    seissol::dynamicRupture::kernel::computeTheta krnl;
+    krnl.selectVelocities = init::selectVelocities::Values;
+    krnl.selectTractions = init::selectTractions::Values;
+
+    real zPlus[tensor::Zplus::size()] = {};
+    auto zPlusView = init::theta::view::create(zPlus);
+    copyEigenToYateto(impedanceMatrices.impedanceNeig, zPlusView);
+    real zMinus[tensor::Zminus::size()] = {};
+    auto zMinusView = init::theta::view::create(zMinus);
+    copyEigenToYateto<real, 3, 3>(impedanceMatrices.impedance, zMinusView);
+    real eta[tensor::Zminus::size()] = {};
+    auto etaView = init::theta::view::create(eta);
+    copyEigenToYateto<real, 3, 3>(impedanceMatrices.eta, etaView);
+    krnl.Zplus = zPlus;
+    krnl.Zminus = zMinus;
+    krnl.eta = eta;
+
+    real thetaBuffer[tensor::theta::size()] = {};
+    krnl.theta = thetaBuffer;
+    auto thetaView = init::theta::view::create(thetaBuffer);
     for (unsigned o = 0; o < CONVERGENCE_ORDER; ++o) {
+      krnl.Qplus = qInterpolatedPlus[o];
+      krnl.Qminus = qInterpolatedMinus[o];
+      krnl.execute();
 
 #ifdef ACL_DEVICE_OFFLOAD
 #pragma omp loop bind(parallel)
@@ -74,6 +123,15 @@ struct Common {
         faultStresses.traction2[o][i] =
             etaS * (qIMinus[o][8][i] - qIPlus[o][8][i] + qIPlus[o][5][i] * invZs +
                     qIMinus[o][5][i] * invZsNeig);
+
+        #pragma omp critical
+        {
+          std::cout << "---------------------------" << std::endl;
+          std::cout << faultStresses.normalStress[o][i] << ", " << faultStresses.traction1[o][i]
+                    << ", " << faultStresses.traction2[o][i] << std::endl;
+          std::cout << thetaView(0, i) << ", " << thetaView(1, i) << ", " << thetaView(2, i)
+                    << std::endl;
+        }
       }
     }
   }
