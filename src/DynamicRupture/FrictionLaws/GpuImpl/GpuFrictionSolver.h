@@ -90,7 +90,7 @@ class GpuFrictionSolver : public GpuBaseFrictionLaw {
         Common::savePeakSlipRateOutput(slipRateMagnitude[ltsFace], peakSlipRate[ltsFace]);
         Common::postcomputeImposedStateFromNewStress(faultStresses[ltsFace],
                                                      tractionResults[ltsFace],
-                                                     impAndEta[ltsFace],
+                                                     impedanceMatrices[ltsFace],
                                                      imposedStatePlus[ltsFace],
                                                      imposedStateMinus[ltsFace],
                                                      qInterpolatedPlus[ltsFace],

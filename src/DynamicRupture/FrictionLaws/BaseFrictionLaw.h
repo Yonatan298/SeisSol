@@ -80,7 +80,7 @@ class BaseFrictionLaw : public FrictionSolver {
       // compute output
       Common::postcomputeImposedStateFromNewStress(faultStresses,
                                                    tractionResults,
-                                                   impAndEta[ltsFace],
+                                                   impedanceMatrices[ltsFace],
                                                    imposedStatePlus[ltsFace],
                                                    imposedStateMinus[ltsFace],
                                                    qInterpolatedPlus[ltsFace],

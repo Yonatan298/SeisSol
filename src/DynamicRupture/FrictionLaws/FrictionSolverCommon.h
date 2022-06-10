@@ -78,7 +78,7 @@ struct Common {
    *
    * @param[in] faultStresses
    * @param[in] tractionResults
-   * @param[in] impAndEta
+   * @param[in] impedancenceMatrices
    * @param[in] qInterpolatedPlus
    * @param[in] qInterpolatedMinus
    * @param[in] timeWeights
@@ -88,18 +88,12 @@ struct Common {
   static void postcomputeImposedStateFromNewStress(
       const FaultStresses& faultStresses,
       const TractionResults& tractionResults,
-      const ImpedancesAndEta& impAndEta,
+      const ImpedanceMatrices& impedanceMatrices,
       real imposedStatePlus[tensor::QInterpolated::size()],
       real imposedStateMinus[tensor::QInterpolated::size()],
       real qInterpolatedPlus[CONVERGENCE_ORDER][tensor::QInterpolated::size()],
       real qInterpolatedMinus[CONVERGENCE_ORDER][tensor::QInterpolated::size()],
       double timeWeights[CONVERGENCE_ORDER]) {
-
-    // this initialization of the kernel could be moved to the initializer
-    // set inputParam could be extendent for this (or create own function)
-    // the kernel then could be a class attribute and following values are only set once
-    //(but be careful of race conditions since this is computed in parallel for each face!!)
-
     // set imposed state to zero
 #ifdef ACL_DEVICE_OFFLOAD
 #pragma omp loop bind(parallel)
@@ -109,52 +103,47 @@ struct Common {
       imposedStateMinus[i] = static_cast<real>(0.0);
     }
 
-    auto invZs = impAndEta.invZs;
-    auto invZp = impAndEta.invZp;
-    auto invZsNeig = impAndEta.invZsNeig;
-    auto invZpNeig = impAndEta.invZpNeig;
+    // setup kernel
+    seissol::dynamicRupture::kernel::computeImposedStateM krnlM;
+    krnlM.extractVelocities = init::extractVelocities::Values;
+    krnlM.extractTractions = init::extractTractions::Values;
+    krnlM.mapToVelocities = init::mapToVelocities::Values;
+    krnlM.mapToTractions = init::mapToTractions::Values;
+    krnlM.Zminus = impedanceMatrices.impedance.data();
+    krnlM.imposedState = imposedStateMinus;
 
-    using ImposedStateShapeT = real(*)[misc::numPaddedPoints];
-    auto* imposedStateP = reinterpret_cast<ImposedStateShapeT>(imposedStatePlus);
-    auto* imposedStateM = reinterpret_cast<ImposedStateShapeT>(imposedStateMinus);
+    seissol::dynamicRupture::kernel::computeImposedStateP krnlP;
+    krnlP.extractVelocities = init::extractVelocities::Values;
+    krnlP.extractTractions = init::extractTractions::Values;
+    krnlP.mapToVelocities = init::mapToVelocities::Values;
+    krnlP.mapToTractions = init::mapToTractions::Values;
+    krnlP.Zplus = impedanceMatrices.impedanceNeig.data();
+    krnlP.imposedState = imposedStatePlus;
 
-    using QInterpolatedShapeT = real(*)[misc::numQuantities][misc::numPaddedPoints];
-    auto* qIPlus = reinterpret_cast<QInterpolatedShapeT>(qInterpolatedPlus);
-    auto* qIMinus = reinterpret_cast<QInterpolatedShapeT>(qInterpolatedMinus);
+    real thetaBuffer[tensor::theta::size()] = {};
+    auto thetaView = init::theta::view::create(thetaBuffer);
+    krnlM.theta = thetaBuffer;
+    krnlP.theta = thetaBuffer;
 
     for (unsigned o = 0; o < CONVERGENCE_ORDER; ++o) {
       auto weight = timeWeights[o];
-
-#ifdef ACL_DEVICE_OFFLOAD
-#pragma omp loop bind(parallel)
-#else
-#pragma omp simd
-#endif // ACL_DEVICE_OFFLOAD
+      // copy values to yateto dataformat
       for (unsigned i = 0; i < misc::numPaddedPoints; ++i) {
-        auto normalStress = faultStresses.normalStress[o][i];
-        auto traction1 = tractionResults.traction1[o][i];
-        auto traction2 = tractionResults.traction2[o][i];
-
-        imposedStateM[0][i] += weight * normalStress;
-        imposedStateM[3][i] += weight * traction1;
-        imposedStateM[5][i] += weight * traction2;
-        // This is eq (4.60) from Carsten's thesis
-        imposedStateM[6][i] +=
-            weight * (qIMinus[o][6][i] - invZpNeig * (normalStress - qIMinus[o][0][i]));
-        imposedStateM[7][i] +=
-            weight * (qIMinus[o][7][i] - invZsNeig * (traction1 - qIMinus[o][3][i]));
-        imposedStateM[8][i] +=
-            weight * (qIMinus[o][8][i] - invZsNeig * (traction2 - qIMinus[o][5][i]));
-
-        imposedStateP[0][i] += weight * normalStress;
-        imposedStateP[3][i] += weight * traction1;
-        imposedStateP[5][i] += weight * traction2;
-        // This is eq (4.60) from Carsten's thesis
-        imposedStateP[6][i] +=
-            weight * (qIPlus[o][6][i] + invZp * (normalStress - qIPlus[o][0][i]));
-        imposedStateP[7][i] += weight * (qIPlus[o][7][i] + invZs * (traction1 - qIPlus[o][3][i]));
-        imposedStateP[8][i] += weight * (qIPlus[o][8][i] + invZs * (traction2 - qIPlus[o][5][i]));
+        thetaView(i, 0) = faultStresses.normalStress[o][i];
+        thetaView(i, 1) = tractionResults.traction1[o][i];
+        thetaView(i, 2) = tractionResults.traction2[o][i];
+#ifdef USE_POROELASTIC
+        thetaView(i, 3) = faultStresses.fluidPressure[o][i];
+#endif
       }
+      // execute kernel (and hence update imposedStatePlus/Minus)
+      krnlM.Qminus = qInterpolatedMinus[o];
+      krnlM.weight = weight;
+      krnlM.execute();
+
+      krnlP.Qplus = qInterpolatedPlus[o];
+      krnlP.weight = weight;
+      krnlP.execute();
     }
   }
 
