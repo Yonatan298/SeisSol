@@ -139,7 +139,7 @@ void seissol::Simulator::simulate() {
 
     printPerformance(stopwatch.split());
   }
-  
+
   Modules::callSyncHook(m_currentTime, l_timeTolerance, true);
 
   // stop the communication thread (if applicable)
@@ -151,6 +151,9 @@ void seissol::Simulator::simulate() {
   seissol::SeisSol::main.timeManager().printComputationTime();
 
   seissol::SeisSol::main.analysisWriter().printAnalysis(m_currentTime);
+
+  auto* faultOutputManager = seissol::SeisSol::main.timeManager().getFaultOutputManager();
+  faultOutputManager->writePickpointOutput(m_currentTime, 0.0);
 
   printFlops();
 
